@@ -174,6 +174,13 @@ body.hide-tabs .tabbar{display:none}
 .rec.live .sliders .size{visibility:hidden}
 .rec-ctl{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
 .rec-ctl .round{width:52px;height:52px}
+.zoomrow{display:none;align-items:center;gap:12px;padding:8px 14px;border-radius:20px}
+.zoomrow.on{display:flex}
+.zoomrow input{flex:1;accent-color:#9D82FF;height:28px}
+.zoomrow b{font-size:13px;font-weight:600;min-width:42px;text-align:right;font-variant-numeric:tabular-nums}
+.camlabel{height:36px;padding:0 14px;border-radius:99px;display:flex;align-items:center;font-size:13px;font-weight:600;color:#fff}
+.rec.live .zoomrow{display:none}
+.rec-top .mid{display:flex;gap:8px}
 .shutter{width:80px;height:80px;border-radius:50%;padding:0;border:4px solid #fff;background:transparent;display:grid;place-items:center}
 .shutter i{width:62px;height:62px;border-radius:50%;background:linear-gradient(180deg,#7A5CFF,#B030C8);box-shadow:0 0 26px 2px rgba(140,90,255,.9);transition:all .18s ease}
 .rec.live .shutter i{width:30px;height:30px;border-radius:8px;background:#FF3B5C;box-shadow:0 0 22px 2px rgba(255,59,92,.8)}
@@ -264,6 +271,7 @@ body.hide-tabs .tabbar{display:none}
         <button class="btn primary" type="button" id="f-rec"><span class="dot"></span>Felvétel indítása</button>
         <button class="btn sec" type="button" id="f-script">Szöveg</button>
       </div>
+      <div class="actions" style="margin-top:10px"><button class="btn sec" type="button" id="f-up" style="flex:1">Videó feltöltése (felolvasás nélkül)</button></div>
     </div>
     <p class="note" id="ideas-note"></p>
 
@@ -296,6 +304,7 @@ body.hide-tabs .tabbar{display:none}
       <button class="btn primary" type="button" id="script-rec"><span class="dot"></span>Felvétel</button>
       <button class="btn sec" type="button" id="script-new">Új szöveg</button>
     </div>
+    <div class="actions" style="margin-top:10px"><button class="btn sec" type="button" id="script-up" style="flex:1">Videó feltöltése</button></div>
   </section>
 
   <!-- Videóim -->
@@ -332,17 +341,21 @@ body.hide-tabs .tabbar{display:none}
     <button class="round glass" type="button" id="rec-close" aria-label="Bezárás">
       <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
-    <div class="timer glass"><i></i><span id="rec-time">0:00</span></div>
+    <div class="mid"><div class="camlabel glass" id="cam-label">Előlapi</div><div class="timer glass"><i></i><span id="rec-time">0:00</span></div></div>
+    <span style="width:44px"></span>
   </div>
   <div class="count" id="count" aria-live="assertive"></div>
   <div class="rec-msg glass" id="rec-msg"><p id="rec-msg-text"></p><button class="btn sec wide" type="button" id="rec-retry">Újrapróbálom</button></div>
   <div class="rec-bottom">
+    <div class="zoomrow glass" id="zoomrow"><label for="zoom" style="margin:0;font-size:12px">Zoom</label><input type="range" id="zoom" min="1" max="3" step="0.1" value="1"><b id="zoom-val">1×</b></div>
     <div class="sliders glass">
       <div><label for="tp-speed">Tempó</label><input type="range" id="tp-speed" min="12" max="110" value="38"></div>
       <div class="size"><label for="tp-size">Betűméret</label><input type="range" id="tp-size" min="20" max="44" value="28"></div>
     </div>
     <div class="rec-ctl">
-      <span></span>
+      <button class="round glass" type="button" id="rec-up" aria-label="Videó feltöltése">
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
       <button class="shutter" type="button" id="shutter" aria-label="Felvétel indítása"><i></i></button>
       <button class="round glass" type="button" id="flip" aria-label="Kamera váltása" style="justify-self:end">
         <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2"/><path d="M20 4v4h-4M4 20v-4h4"/></svg>
@@ -350,6 +363,8 @@ body.hide-tabs .tabbar{display:none}
     </div>
   </div>
 </div>
+
+<input type="file" id="up" accept="video/*" hidden>
 
 <!-- Visszanézés -->
 <div class="review" id="review" role="dialog" aria-modal="true" aria-label="Felvétel visszanézése">
@@ -627,6 +642,22 @@ function stopStream(){
   if (rec.stream){ rec.stream.getTracks().forEach(function(t){ t.stop(); }); rec.stream = null; }
   $("cam").srcObject = null;
 }
+function setupZoom(stream){
+  var row = $("zoomrow"), z = $("zoom"); row.classList.remove("on"); rec.track = null;
+  try {
+    var tr = stream.getVideoTracks()[0];
+    var caps = tr && tr.getCapabilities ? tr.getCapabilities() : null;
+    if (!caps || !caps.zoom || !(caps.zoom.max > caps.zoom.min)) return;
+    var cur = (tr.getSettings && tr.getSettings().zoom) || caps.zoom.min;
+    z.min = caps.zoom.min; z.max = Math.min(caps.zoom.max, 10); z.step = caps.zoom.step || 0.1; z.value = cur;
+    $("zoom-val").textContent = (Math.round(cur * 10) / 10) + "×";
+    rec.track = tr; row.classList.add("on");
+  } catch(e){}
+}
+$("zoom").addEventListener("input", function(){
+  var v = Number(this.value); $("zoom-val").textContent = (Math.round(v * 10) / 10) + "×";
+  if (rec.track) rec.track.applyConstraints({advanced:[{zoom:v}]}).catch(function(){});
+});
 function startCam(){
   recMsg("");
   if (inPreview){
@@ -645,6 +676,8 @@ function startCam(){
     rec.stream = stream;
     var cam = $("cam"); cam.srcObject = stream; cam.classList.toggle("mirror", rec.facing === "user");
     var p = cam.play(); if (p && p.catch) p.catch(function(){});
+    $("cam-label").textContent = rec.facing === "user" ? "Előlapi" : "Hátlapi";
+    setupZoom(stream);
     return true;
   }).catch(function(err){
     var name = err && err.name;
@@ -733,7 +766,7 @@ $("shutter").addEventListener("click", function(){
 var last = null;
 function presentReview(item, note){
   last = item;
-  var ext = item.type.indexOf("mp4") >= 0 ? "mp4" : "webm";
+  var ext = extOf(item.type);
   $("review-video").src = item.url;
   $("review-save").href = item.url; $("review-save").setAttribute("download", item.name);
   $("review-note").textContent = note || (item.len + " · " + (item.blob.size / 1048576).toFixed(1) + " MB · " + ext.toUpperCase());
@@ -745,8 +778,9 @@ function presentReview(item, note){
   else { cut.className = "btn primary"; cut.innerHTML = '<span class="dot"></span>Vágás és animáció'; }
   $("review").classList.add("on");
 }
+function extOf(type){ return type.indexOf("mp4") >= 0 ? "mp4" : (type.indexOf("quicktime") >= 0 ? "mov" : "webm"); }
 function finishRecording(blob, type){
-  var ext = type.indexOf("mp4") >= 0 ? "mp4" : "webm";
+  var ext = extOf(type);
   var idea = state.ideas[state.current];
   var d = new Date();
   var stamp = d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0") + "-" + String(d.getHours()).padStart(2,"0") + String(d.getMinutes()).padStart(2,"0");
@@ -765,6 +799,32 @@ $("review-share").addEventListener("click", function(){
 function closeReview(){ $("review-video").pause(); $("review").classList.remove("on"); }
 $("review-again").addEventListener("click", function(){ closeReview(); openRec(); });
 $("review-done").addEventListener("click", function(){ closeReview(); renderVideos(); show("videok"); });
+
+/* ---------- videófeltöltés ---------- */
+function pickUpload(){ if (rec.live || rec.busy) return; $("up").value = ""; $("up").click(); }
+["f-up","script-up","rec-up"].forEach(function(id){ $(id).addEventListener("click", pickUpload); });
+$("up").addEventListener("change", function(){
+  var f = this.files && this.files[0]; if (!f) return;
+  var type = f.type || "video/mp4";
+  if (type.indexOf("video") !== 0){ alert("Ez nem videófájl."); return; }
+  var url = URL.createObjectURL(f), probe = document.createElement("video");
+  probe.preload = "metadata"; probe.muted = true;
+  var done = false;
+  function go(dur){
+    if (done) return; done = true;
+    var idea = state.ideas[state.current], hook = idea ? idea.hook : "";
+    var ms = isFinite(dur) && dur > 0 ? dur * 1000 : 0;
+    var item = {blob:f, url:url, name:f.name || ("feltoltott." + extOf(type)), title:idea ? idea.cim : "Feltöltött videó",
+      len:ms ? fmt(ms) : "–", secs:ms / 1000, type:type, hook:hook, cta:lastScriptLine(hook)};
+    state.videos.unshift(item);
+    if ($("rec").classList.contains("on")) closeRec();
+    presentReview(item, "");
+  }
+  probe.onloadedmetadata = function(){ go(probe.duration); };
+  probe.onerror = function(){ go(0); };
+  setTimeout(function(){ go(0); }, 4000);
+  probe.src = url;
+});
 
 function renderVideos(){
   var box = $("videos"); box.textContent = "";
