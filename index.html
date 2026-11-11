@@ -563,7 +563,7 @@ function renderIdeas(){
     var s = document.createElement("span"); s.textContent = idea.hook;
     b.appendChild(s);
     b.insertAdjacentHTML("beforeend", '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>');
-    b.addEventListener("click", function(){ state.current = i; renderIdeas(); window.scrollTo({top:0, behavior:"smooth"}); });
+    b.addEventListener("click", function(){ state.current = i; openScript(b); });
     box.appendChild(b);
   });
 }
@@ -600,6 +600,8 @@ $("script").addEventListener("input", function(){
   state.scripts[idea.hook] = $("script").value; store.set("scripts", state.scripts); updateMeter();
 });
 $("f-script").addEventListener("click", function(){ openScript($("f-script")); });
+$("f-hook").style.cursor = "pointer";
+$("f-hook").addEventListener("click", function(){ if (!$("f-script").disabled) openScript($("f-script")); });
 $("script-back").addEventListener("click", function(){ renderIdeas(); show("otletek"); });
 $("script-new").addEventListener("click", function(){
   delete state.scripts[state.ideas[state.current].hook];
