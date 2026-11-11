@@ -691,7 +691,7 @@ function startCam(){
   }
   stopStream();
   return navigator.mediaDevices.getUserMedia({
-    video:{facingMode:{ideal:rec.facing}, width:{ideal:1280}, height:{ideal:960}, frameRate:{ideal:30}},
+    video:{facingMode:{ideal:rec.facing}, width:{ideal:1080}, height:{ideal:1920}, frameRate:{ideal:30}},
     audio:{echoCancellation:true, noiseSuppression:true}
   }).then(function(stream){
     rec.stream = stream;
