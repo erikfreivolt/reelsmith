@@ -462,7 +462,7 @@ function apiServer(payload){
   var ctl = new AbortController();
   var t = setTimeout(function(){ ctl.abort(); }, 40000);
   return fetch("/api/generate", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload), signal:ctl.signal})
-    .then(function(r){ clearTimeout(t); if (!r.ok) throw new Error("http " + r.status); return r.json(); },
+    .then(function(r){ clearTimeout(t); if (!r.ok) return r.json().catch(function(){ return {}; }).then(function(j){ throw new Error("http " + r.status + (j && (j.detail || j.error) ? " · " + (j.detail || j.error) : "")); }); return r.json(); },
           function(e){ clearTimeout(t); throw e; });
 }
 /* Claude-on belüli előnézetben nincs saját szerver: ott a Claude-ot kérdezzük közvetlenül. */
@@ -533,8 +533,8 @@ function loadIdeas(btn, label){
   api({type:"ideas", szakma:p.szakma, kozonseg:p.kozonseg, stilus:p.stilus}).then(function(d){
     if (!d || !Array.isArray(d.ideas) || !d.ideas.length) throw new Error("empty");
     setIdeas(d.ideas, "");
-  }).catch(function(){
-    setIdeas(LOCAL_IDEAS, "Általános példákat látsz, mert a személyre szabott ötleteket most nem sikerült elkészíteni.");
+  }).catch(function(e){
+    setIdeas(LOCAL_IDEAS, "Általános példákat látsz, mert a személyre szabott ötleteket most nem sikerült elkészíteni. (" + String(e && e.name === "AbortError" ? "időtúllépés" : (e && e.message) || e).slice(0, 200) + ")");
   }).then(function(){
     btn.disabled = false; btn.textContent = label;
     show("otletek");

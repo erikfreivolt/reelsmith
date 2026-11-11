@@ -34,7 +34,7 @@ async function askGemini(prompt, maxTokens) {
       generationConfig: { maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
     }),
   });
-  if (!r.ok) throw new Error("gemini " + r.status);
+  if (!r.ok) { let m = ""; try { m = ((await r.json()).error || {}).message || ""; } catch (e) {} throw new Error("gemini " + r.status + " " + m.slice(0, 160)); }
   const data = await r.json();
   const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
   return parts.map((p) => p.text || "").join("").trim();
@@ -122,6 +122,6 @@ module.exports = async function handler(req, res) {
 
     res.status(400).json({ error: "type" });
   } catch (e) {
-    res.status(502).json({ error: "generate_failed" });
+    res.status(502).json({ error: "generate_failed", detail: String((e && e.message) || e).slice(0, 220) });
   }
 };
