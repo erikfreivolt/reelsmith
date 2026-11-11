@@ -28,4 +28,4 @@ A kapott https címet nyisd meg telefonon. A kamera csak https címen működik.
 - A végpont IP-címenként óránként 30 kérést enged (`RATE_LIMIT_PER_HOUR`). Ez csak alap védelem.
   Az ingyenes időszak alatt érdemes az Anthropic felületén havi költségkeretet is beállítani.
 - A modell az `ANTHROPIC_MODEL` változóval cserélhető (alapértelmezés: `claude-haiku-5-5`).
-- Az automata vágás még nincs benne.
+- A felvétel után a "Vágás és animáció" gomb kivágja a hosszú csendeket, nyitócímet, nagyítást, folyamatjelzőt és záró kártyát tesz rá (a böngészőben, valós időben renderel, ezért közben a képernyőnek bekapcsolva kell maradnia). A szavankénti felirat később, szerveroldali átírással jön.
