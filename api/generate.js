@@ -2,7 +2,7 @@
 // Környezeti változók:
 //   GEMINI_API_KEY      ingyenes lehetőség: Google AI Studio kulcs (aistudio.google.com/apikey)
 //   ANTHROPIC_API_KEY   vagy: a Claude API kulcsod (ha mindkettő be van állítva, a Gemini az elsőbbségi)
-//   GEMINI_MODEL        nem kötelező, alapértelmezés: gemini-flash-latest
+//   GEMINI_MODEL        nem kötelező: elsőként próbált modell (hiba esetén tartalék modellekre vált)
 //   ANTHROPIC_MODEL     nem kötelező, alapértelmezés: claude-haiku-5-5
 //   RATE_LIMIT_PER_HOUR nem kötelező, IP-címenkénti kérés óránként (alapértelmezés: 30)
 
@@ -24,20 +24,49 @@ function clean(value, max) {
   return String(value || "").replace(/[\r\n\t]+/g, " ").trim().slice(0, max);
 }
 
-async function askGemini(prompt, maxTokens) {
-  const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
+async function geminiOnce(model, prompt, maxTokens, thinking) {
+  const cfg = { maxOutputTokens: maxTokens };
+  if (thinking) cfg.thinkingConfig = { thinkingBudget: 0 };
   const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
-    }),
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: cfg }),
   });
-  if (!r.ok) { let m = ""; try { m = ((await r.json()).error || {}).message || ""; } catch (e) {} throw new Error("gemini " + r.status + " " + m.slice(0, 160)); }
+  if (!r.ok) {
+    let m = ""; try { m = ((await r.json()).error || {}).message || ""; } catch (e) {}
+    const err = new Error("gemini " + r.status + " " + model + " " + m.slice(0, 120)); err.status = r.status; throw err;
+  }
   const data = await r.json();
   const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
-  return parts.map((p) => p.text || "").join("").trim();
+  const text = parts.map((p) => p.text || "").join("").trim();
+  if (!text) { const err = new Error("gemini üres válasz " + model); err.status = 500; throw err; }
+  return text;
+}
+
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+// Túlterheltség (503/429/500) esetén újrapróbál, majd tartalék modellre vált.
+async function askGemini(prompt, maxTokens) {
+  const first = process.env.GEMINI_MODEL;
+  const models = [first, "gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"]
+    .filter((m, i, a) => m && a.indexOf(m) === i);
+  const started = Date.now();
+  let lastErr;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (Date.now() - started > 22000) throw lastErr || new Error("gemini időkeret");
+      try {
+        try { return await geminiOnce(model, prompt, maxTokens, true); }
+        catch (e) { if (e.status === 400) return await geminiOnce(model, prompt, maxTokens, false); throw e; }
+      } catch (e) {
+        lastErr = e;
+        if (e.status === 404 || e.status === 400) break;          // ez a modell nem jó, jöhet a következő
+        if (e.status === 401 || e.status === 403) throw e;         // kulcs hiba, értelmetlen újrapróbálni
+        if (attempt === 0) await sleep(900);
+      }
+    }
+  }
+  throw lastErr || new Error("gemini sikertelen");
 }
 
 async function askClaude(prompt, maxTokens) {
