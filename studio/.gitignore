@@ -1,0 +1,9 @@
+node_modules/
+input/*
+work/*
+output/*
+!input/.gitkeep
+!work/.gitkeep
+!output/.gitkeep
+.venv/
+__pycache__/
