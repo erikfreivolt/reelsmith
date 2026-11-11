@@ -1,6 +1,8 @@
 // Reelsmith: ötlet- és szövegíró végpont (Vercel serverless function).
 // Környezeti változók:
-//   ANTHROPIC_API_KEY   kötelező, a Claude API kulcsod
+//   GEMINI_API_KEY      ingyenes lehetőség: Google AI Studio kulcs (aistudio.google.com/apikey)
+//   ANTHROPIC_API_KEY   vagy: a Claude API kulcsod (ha mindkettő be van állítva, a Gemini az elsőbbségi)
+//   GEMINI_MODEL        nem kötelező, alapértelmezés: gemini-flash-latest
 //   ANTHROPIC_MODEL     nem kötelező, alapértelmezés: claude-haiku-5-5
 //   RATE_LIMIT_PER_HOUR nem kötelező, IP-címenkénti kérés óránként (alapértelmezés: 30)
 
@@ -22,7 +24,24 @@ function clean(value, max) {
   return String(value || "").replace(/[\r\n\t]+/g, " ").trim().slice(0, max);
 }
 
+async function askGemini(prompt, maxTokens) {
+  const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+  });
+  if (!r.ok) throw new Error("gemini " + r.status);
+  const data = await r.json();
+  const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+  return parts.map((p) => p.text || "").join("").trim();
+}
+
 async function askClaude(prompt, maxTokens) {
+  if (process.env.GEMINI_API_KEY) return askGemini(prompt, maxTokens);
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -43,7 +62,7 @@ async function askClaude(prompt, maxTokens) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "method" }); return; }
-  if (!process.env.ANTHROPIC_API_KEY) { res.status(503).json({ error: "no_key" }); return; }
+  if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) { res.status(503).json({ error: "no_key" }); return; }
 
   const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
   if (!allowed(ip)) { res.status(429).json({ error: "rate_limited" }); return; }

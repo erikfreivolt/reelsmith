@@ -13,6 +13,7 @@ Telefonra szabott webapp: videóötlet, szöveg, kamerás felvétel súgógéppe
 2. A számítógépeden nyiss terminált ebben a mappában, és futtasd: `npx vercel`
    Az első futásnál bejelentkeztet, és néhány kérdést tesz fel. Az alapértelmezett válaszok jók.
 3. A Vercel felületén a projekt Settings > Environment Variables részénél add hozzá:
+   - `GEMINI_API_KEY`: ingyenes Google AI Studio kulcs (aistudio.google.com/apikey), hitelkártya nélkül. Vagy:
    - `ANTHROPIC_API_KEY`: a Claude API-kulcsod (console.anthropic.com).
 4. Élesítés: `npx vercel --prod`
 
