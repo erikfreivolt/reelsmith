@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#07070D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Reelsmith">
 <title>Reelsmith</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -147,7 +150,7 @@ textarea.field{height:auto;min-height:300px;padding:16px;line-height:1.6;resize:
 body.hide-tabs .tabbar{display:none}
 
 /* felvétel */
-.rec{position:fixed;inset:0;z-index:20;background:#000;display:none}
+.rec{position:fixed;left:0;top:0;width:100%;height:100vh;height:100dvh;z-index:20;background:#000;display:none;touch-action:none}
 .rec .round{color:#fff}
 .rec.on{display:block}
 .rec video.cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -180,6 +183,11 @@ body.hide-tabs .tabbar{display:none}
 .zoomrow b{font-size:13px;font-weight:600;min-width:42px;text-align:right;font-variant-numeric:tabular-nums}
 .camlabel{height:36px;padding:0 14px;border-radius:99px;display:flex;align-items:center;font-size:13px;font-weight:600;color:#fff}
 .rec.live .zoomrow{display:none}
+.rec-opts{display:none;flex-direction:column;gap:10px}
+.rec.opts .rec-opts{display:flex}
+.rec-opts .zoomrow{display:flex}
+.rec-pill{position:absolute;z-index:3;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 118px);padding:6px 12px;border-radius:99px;font-size:13px;font-weight:600;color:#fff;opacity:0;transition:opacity .2s;pointer-events:none}
+.rec-pill.on{opacity:1}
 .rec-top .mid{display:flex;gap:8px}
 .shutter{width:80px;height:80px;border-radius:50%;padding:0;border:4px solid #fff;background:transparent;display:grid;place-items:center}
 .shutter i{width:62px;height:62px;border-radius:50%;background:linear-gradient(180deg,#7A5CFF,#B030C8);box-shadow:0 0 26px 2px rgba(140,90,255,.9);transition:all .18s ease}
@@ -342,16 +350,19 @@ body.hide-tabs .tabbar{display:none}
       <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
     <div class="mid"><div class="camlabel glass" id="cam-label">Előlapi</div><div class="timer glass"><i></i><span id="rec-time">0:00</span></div></div>
-    <span style="width:44px"></span>
+    <button class="round glass" type="button" id="rec-opts" aria-label="Beállítások">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+    </button>
   </div>
+  <div class="rec-pill glass" id="rec-pill"></div>
   <div class="count" id="count" aria-live="assertive"></div>
   <div class="rec-msg glass" id="rec-msg"><p id="rec-msg-text"></p><button class="btn sec wide" type="button" id="rec-retry">Újrapróbálom</button></div>
   <div class="rec-bottom">
-    <div class="zoomrow glass" id="zoomrow"><label for="zoom" style="margin:0;font-size:12px">Zoom</label><input type="range" id="zoom" min="1" max="3" step="0.1" value="1"><b id="zoom-val">1×</b></div>
+    <div class="rec-opts"><div class="zoomrow glass" id="zoomrow"><label for="zoom" style="margin:0;font-size:12px">Zoom</label><input type="range" id="zoom" min="1" max="3" step="0.1" value="1"><b id="zoom-val">1×</b></div>
     <div class="sliders glass">
       <div><label for="tp-speed">Tempó</label><input type="range" id="tp-speed" min="12" max="110" value="38"></div>
       <div class="size"><label for="tp-size">Betűméret</label><input type="range" id="tp-size" min="20" max="44" value="28"></div>
-    </div>
+    </div></div>
     <div class="rec-ctl">
       <button class="round glass" type="button" id="rec-up" aria-label="Videó feltöltése">
         <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
@@ -680,7 +691,7 @@ function startCam(){
   }
   stopStream();
   return navigator.mediaDevices.getUserMedia({
-    video:{facingMode:rec.facing, width:{ideal:1080}, height:{ideal:1920}},
+    video:{facingMode:{ideal:rec.facing}, width:{ideal:1280}, height:{ideal:960}, frameRate:{ideal:30}},
     audio:{echoCancellation:true, noiseSuppression:true}
   }).then(function(stream){
     rec.stream = stream;
@@ -715,6 +726,24 @@ function closeRec(){
   try { if (rec.lock){ rec.lock.release(); rec.lock = null; } } catch(e){}
 }
 $("rec-close").addEventListener("click", closeRec);
+$("rec-opts").addEventListener("click", function(){ $("rec").classList.toggle("opts"); });
+/* Csípés: két ujjal nagyítás, mint a TikTokon. */
+(function(){
+  var d0 = 0, z0 = 1, pillT = 0;
+  function dist(t){ var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx*dx + dy*dy); }
+  var el = $("rec");
+  el.addEventListener("touchstart", function(e){ if (e.touches.length === 2){ d0 = dist(e.touches); z0 = Number($("zoom").value) || 1; } }, {passive:true});
+  el.addEventListener("touchmove", function(e){
+    if (e.touches.length !== 2 || !d0 || rec.live === undefined) return;
+    e.preventDefault();
+    var z = $("zoom"), lo = Number(z.min), hi = Number(z.max);
+    var v = Math.min(hi, Math.max(lo, z0 * dist(e.touches) / d0));
+    z.value = v; z.dispatchEvent(new Event("input"));
+    var pill = $("rec-pill"); pill.textContent = (Math.round(v * 10) / 10) + "×"; pill.classList.add("on");
+    clearTimeout(pillT); pillT = setTimeout(function(){ pill.classList.remove("on"); }, 900);
+  }, {passive:false});
+  el.addEventListener("touchend", function(e){ if (e.touches.length < 2) d0 = 0; }, {passive:true});
+})();
 $("rec-retry").addEventListener("click", startCam);
 $("flip").addEventListener("click", function(){
   if (rec.live || rec.busy) return;
