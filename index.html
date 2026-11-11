@@ -611,7 +611,7 @@ $("f-rec").addEventListener("click", function(){ ensureScript($("f-rec")).then(o
 $("script-rec").addEventListener("click", openRec);
 
 /* ---------- felvétel ---------- */
-var rec = {stream:null, recorder:null, chunks:[], facing:"user", live:false, y:0, raf:0, last:0, t0:0, tick:0, lock:null, busy:false, countTimer:0};
+var rec = {dz:1, canvas:null, pump:0, stream:null, recorder:null, chunks:[], facing:"user", live:false, y:0, raf:0, last:0, t0:0, tick:0, lock:null, busy:false, countTimer:0};
 
 function recMsg(text){ $("rec-msg-text").textContent = text || ""; $("rec-msg").classList.toggle("on", !!text); }
 function tpStart(){ return $("tp").clientHeight * 0.36 - 6; }
@@ -644,21 +644,29 @@ function stopStream(){
   if (rec.stream){ rec.stream.getTracks().forEach(function(t){ t.stop(); }); rec.stream = null; }
   $("cam").srcObject = null;
 }
+function applyCam(){
+  $("cam").style.transform = (rec.facing === "user" ? "scaleX(-1) " : "") + "scale(" + rec.dz + ")";
+}
 function setupZoom(stream){
-  var row = $("zoomrow"), z = $("zoom"); row.classList.remove("on"); rec.track = null;
+  var row = $("zoomrow"), z = $("zoom"); rec.track = null;
   try {
     var tr = stream.getVideoTracks()[0];
     var caps = tr && tr.getCapabilities ? tr.getCapabilities() : null;
-    if (!caps || !caps.zoom || !(caps.zoom.max > caps.zoom.min)) return;
-    var cur = (tr.getSettings && tr.getSettings().zoom) || caps.zoom.min;
-    z.min = caps.zoom.min; z.max = Math.min(caps.zoom.max, 10); z.step = caps.zoom.step || 0.1; z.value = cur;
-    $("zoom-val").textContent = (Math.round(cur * 10) / 10) + "×";
-    rec.track = tr; row.classList.add("on");
+    if (caps && caps.zoom && caps.zoom.max > caps.zoom.min){
+      var cur = (tr.getSettings && tr.getSettings().zoom) || caps.zoom.min;
+      z.min = caps.zoom.min; z.max = Math.min(caps.zoom.max, 10); z.step = caps.zoom.step || 0.1; z.value = cur;
+      $("zoom-val").textContent = (Math.round(cur * 10) / 10) + "×";
+      rec.track = tr; row.classList.add("on"); return;
+    }
   } catch(e){}
+  /* Nincs kameraszintű zoom (például iPhone Safari): digitális zoom, a felvételbe is belekerül. */
+  z.min = 1; z.max = 3; z.step = 0.05; z.value = 1; $("zoom-val").textContent = "1×";
+  row.classList.add("on");
 }
 $("zoom").addEventListener("input", function(){
   var v = Number(this.value); $("zoom-val").textContent = (Math.round(v * 10) / 10) + "×";
   if (rec.track) rec.track.applyConstraints({advanced:[{zoom:v}]}).catch(function(){});
+  else { rec.dz = v; applyCam(); }
 });
 function startCam(){
   recMsg("");
@@ -676,7 +684,7 @@ function startCam(){
     audio:{echoCancellation:true, noiseSuppression:true}
   }).then(function(stream){
     rec.stream = stream;
-    var cam = $("cam"); cam.srcObject = stream; cam.classList.toggle("mirror", rec.facing === "user");
+    var cam = $("cam"); cam.srcObject = stream; rec.dz = 1; applyCam();
     var p = cam.play(); if (p && p.catch) p.catch(function(){});
     $("cam-label").textContent = rec.facing === "user" ? "Előlapi" : "Hátlapi";
     setupZoom(stream);
@@ -722,11 +730,32 @@ function pickMime(){
 }
 function fmt(ms){ var s = Math.floor(ms/1000); return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); }
 
+function drawRecFrame(){
+  var v = $("cam"), cv = rec.canvas; if (!cv) return;
+  var sw = v.videoWidth, sh = v.videoHeight; if (!sw || !sh) return;
+  var ctx = cv.getContext("2d"), z = rec.track ? 1 : rec.dz;
+  var cw = Math.min(sw, sh * 9 / 16) / z, ch = cw * 16 / 9;
+  try { ctx.drawImage(v, (sw - cw) / 2, (sh - ch) / 2, cw, ch, 0, 0, cv.width, cv.height); } catch(e){}
+}
+function pumpRec(){ if (!rec.live) return; drawRecFrame(); rec.pump = requestAnimationFrame(pumpRec); }
 function startRecording(){
   var mime = pickMime();
   if (mime === null){ recMsg("Ez a böngésző nem tud videót rögzíteni. Frissítsd a böngészőt, vagy próbáld Safariban vagy Chrome-ban."); return; }
-  try { rec.recorder = mime ? new MediaRecorder(rec.stream, {mimeType:mime}) : new MediaRecorder(rec.stream); }
-  catch(e){ recMsg("Nem sikerült elindítani a felvételt. Próbáld újra."); return; }
+  var src = rec.stream;
+  /* Mindig álló 9:16 (720×1280) felvétel: a kameraképet középre vágva egy vászonra rajzoljuk. */
+  try {
+    var cv = document.createElement("canvas"); cv.width = 720; cv.height = 1280;
+    if (cv.captureStream){
+      rec.canvas = cv; drawRecFrame();
+      var cs = cv.captureStream(30);
+      rec.stream.getAudioTracks().forEach(function(t){ cs.addTrack(t); });
+      src = cs;
+    }
+  } catch(e){ src = rec.stream; rec.canvas = null; }
+  var opts = mime ? {mimeType:mime} : {};
+  if (rec.canvas) opts.videoBitsPerSecond = 6000000;
+  try { rec.recorder = new MediaRecorder(src, opts); }
+  catch(e){ try { rec.canvas = null; rec.recorder = mime ? new MediaRecorder(rec.stream, {mimeType:mime}) : new MediaRecorder(rec.stream); } catch(e2){ recMsg("Nem sikerült elindítani a felvételt. Próbáld újra."); return; } }
   rec.chunks = []; rec.discard = false;
   rec.recorder.ondataavailable = function(e){ if (e.data && e.data.size) rec.chunks.push(e.data); };
   rec.recorder.onstop = function(){
@@ -735,6 +764,7 @@ function startRecording(){
     finishRecording(new Blob(rec.chunks, {type:type}), type);
   };
   rec.recorder.start(1000);
+  if (rec.canvas) rec.pump = requestAnimationFrame(pumpRec);
   rec.live = true; rec.t0 = Date.now(); rec.last = performance.now();
   rec.y = tpStart(); tpApply();
   $("rec").classList.add("live");
@@ -744,7 +774,7 @@ function startRecording(){
 }
 function stopRecording(discard){
   rec.discard = !!discard; rec.live = false;
-  cancelAnimationFrame(rec.raf); clearInterval(rec.tick);
+  cancelAnimationFrame(rec.raf); cancelAnimationFrame(rec.pump); clearInterval(rec.tick);
   $("rec").classList.remove("live"); $("rec-time").textContent = "0:00";
   $("shutter").setAttribute("aria-label", "Felvétel indítása");
   try { if (rec.recorder && rec.recorder.state !== "inactive") rec.recorder.stop(); } catch(e){}
